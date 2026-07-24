@@ -291,3 +291,47 @@ VALUES
    (SELECT id FROM hierarchy_levels WHERE code='MANDO_MEDIO'),
    <id_del_admin_que_crea_la_regla>);
 ```
+
+---
+
+## 8. Fase 5 — Widget de campana (frontend)
+
+### 8.1 Sin build step
+
+Los archivos `assets/js/api-client.js` y `assets/js/notifications-widget.js`
+son JS vanilla sin dependencias — no requieren npm, webpack, ni build. Se
+sirven directamente como estáticos vía Apache.
+
+### 8.2 Integración en cada subsistema ([1002]-[1005])
+
+Agregar en el layout HTML de cada subsistema, antes del cierre de `</body>`:
+
+```html
+<div id="omni-notif-widget"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/notifications-widget.js"></script>
+<script>
+  OmniNotificationsWidget.mount('omni-notif-widget');
+</script>
+```
+
+Colocar el `<div id="omni-notif-widget">` en el header de cada subsistema,
+junto al resto de iconos de navegación.
+
+### 8.3 Verificación visual rápida
+
+1. Abrir cualquier subsistema logueado — debe verse el ícono de campana.
+2. Si hay notificaciones no leídas, debe verse el badge numérico rojo.
+3. Al tocar la campana, debe desplegarse el panel con las notificaciones
+   ordenadas de más reciente a más antigua, coloreadas por severidad
+   (rojo=crítico, naranja=advertencia, gris=informativo).
+4. Tocar el check de una notificación la marca como leída y el badge baja.
+5. "Marcar todas leídas" vacía el badge.
+
+### 8.4 Pruebas automatizadas
+
+Los 2 archivos se validaron con `node --check` (sintaxis) y con una
+suite funcional usando `jsdom` que simula el proxy `/api/omni.php` y
+verifica: badge inicial, apertura del panel, colores de severidad,
+marcado individual y masivo de lectura, y presencia del área táctil
+de 46px. Ver el commit de esta fase para el script de prueba.
