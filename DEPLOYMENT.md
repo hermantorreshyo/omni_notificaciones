@@ -335,3 +335,56 @@ suite funcional usando `jsdom` que simula el proxy `/api/omni.php` y
 verifica: badge inicial, apertura del panel, colores de severidad,
 marcado individual y masivo de lectura, y presencia del área táctil
 de 46px. Ver el commit de esta fase para el script de prueba.
+
+---
+
+## 9. Fase 6 — Panel de administración (monitoreo + reglas)
+
+### 9.1 Rutas nuevas a registrar
+
+```
+GET    /api/v1/notifications/monitor              → NotificationController::monitor()
+GET    /api/v1/notifications/rules                → NotificationRulesController::index()
+GET    /api/v1/notifications/rules/types           → NotificationRulesController::ruleTypes()
+GET    /api/v1/notifications/rules/form-options    → NotificationRulesController::formOptions()
+POST   /api/v1/notifications/rules                 → NotificationRulesController::store()
+PUT    /api/v1/notifications/rules/{id}             → NotificationRulesController::update($id)
+DELETE /api/v1/notifications/rules/{id}             → NotificationRulesController::destroy($id)
+```
+
+Las 6 requieren el permiso `notifications.admin` (ya insertado en Fase 1).
+Asignar ese permiso a los roles correspondientes en `role_permissions` es
+una decisión de negocio pendiente (ver `CHECKLIST_FASE1.md`).
+
+### 9.2 Páginas a publicar
+
+```
+admin/notifications-monitor.html   → Panel de monitoreo (KPIs + tabla filtrable)
+admin/notification-rules.html      → CRUD de reglas programadas
+```
+
+Enlazar ambas desde el menú del Panel Admin de OMNI, en las pantallas
+`notifications_monitor` y `notification_rules` ya registradas en
+`subsystem_screens` (subsystem `1007`).
+
+### 9.3 Verificación
+
+1. Con un usuario que tenga `notifications.admin`: abrir
+   `admin/notification-rules.html` — deben cargar los 3 dropdowns
+   (tipo de notificación, patrón de condición, nivel jerárquico).
+2. Crear una regla de prueba y confirmar que aparece en la tabla.
+3. Eliminarla y confirmar que desaparece (borrado lógico — verificar en
+   BD que `deleted_at` quedó con fecha, la fila sigue existiendo).
+4. Abrir `admin/notifications-monitor.html` — deben verse las tarjetas
+   KPI y la tabla de detalle con destinatarios.
+5. Con un usuario SIN `notifications.admin`: ambas páginas deben mostrar
+   el mensaje de error RBAC en vez de datos.
+
+### 9.4 Pruebas automatizadas
+
+`NotificationRulesController.php` y `NotificationController::monitor()` se
+probaron funcionalmente contra datos reales (PHP 8.3 + PDO): catálogo de
+patrones sin exponer tabla/columna, RBAC, validaciones de scope, CRUD
+completo con borrado lógico, y consolidados correctos. Las 2 páginas admin
+se probaron con `jsdom`, incluyendo una verificación explícita de que el
+formulario nunca envía identificadores de tabla/columna al backend.

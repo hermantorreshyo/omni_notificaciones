@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Monitoreo de Notificaciones · OMNI Admin</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #F7F3EE; margin: 0; padding: 24px; color: #2a2a2a; }
+  h1 { font-family: 'Cormorant Garamond', serif; color: #642a72; font-size: 28px; margin: 0 0 20px; }
+  .kpi-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 24px; }
+  .kpi-card { background: #fff; border-radius: 12px; padding: 16px 20px; min-width: 140px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .kpi-value { font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 700; }
+  .kpi-label { font-size: 12px; color: #6b6b6b; margin-top: 4px; }
+  .kpi-critical .kpi-value { color: #c0392b; }
+  .kpi-warning .kpi-value { color: #d98a3a; }
+  .kpi-info .kpi-value { color: #6b7280; }
+  .filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filters select, .filters input { min-height: 40px; padding: 6px 10px; border-radius: 8px; border: 1px solid #d9d2c7; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #f0ece5; }
+  th { background: #F7F3EE; color: #642a72; }
+  .sev-dot { display: inline-block; width: 9px; height: 9px; border-radius: 999px; margin-right: 6px; }
+  .sev-critical { background: #c0392b; } .sev-warning { background: #d98a3a; } .sev-info { background: #6b7280; }
+  .recipients-count { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #6b6b6b; }
+</style>
+</head>
+<body>
+  <h1>Monitoreo Centralizado de Notificaciones</h1>
+
+  <div class="filters">
+    <select id="filter-severity">
+      <option value="">Todas las severidades</option>
+      <option value="critical">Crítico</option>
+      <option value="warning">Advertencia</option>
+      <option value="info">Informativo</option>
+    </select>
+    <input type="date" id="filter-date-from" placeholder="Desde">
+    <input type="date" id="filter-date-to" placeholder="Hasta">
+    <button id="btn-filter">Filtrar</button>
+  </div>
+
+  <div class="kpi-row" id="kpi-row"></div>
+
+  <table>
+    <thead>
+      <tr><th>Severidad</th><th>Tipo</th><th>Título</th><th>Sede</th><th>Creada</th><th>Destinatarios</th></tr>
+    </thead>
+    <tbody id="notif-table-body"></tbody>
+  </table>
+
+  <script src="/assets/js/api-client.js"></script>
+  <script src="/assets/js/notifications-monitor.js"></script>
+</body>
+</html>
