@@ -388,3 +388,29 @@ patrones sin exponer tabla/columna, RBAC, validaciones de scope, CRUD
 completo con borrado lógico, y consolidados correctos. Las 2 páginas admin
 se probaron con `jsdom`, incluyendo una verificación explícita de que el
 formulario nunca envía identificadores de tabla/columna al backend.
+
+---
+
+## 10. Fix — BORRADOR en transfers (aplicar tras Fase 4)
+
+El core agregó el estado `BORRADOR` a `transfers` (workflow BORRADOR →
+SOLICITADO). Esto afecta el patrón `NO_RECORD_BY_TIME` de la Fase 4: si
+seguía usando `created_at`, un traspaso dejado en borrador (sin enviarse)
+se contaba incorrectamente como "registrado".
+
+```bash
+mysql -u <usuario> -p <base_de_datos> < database/migration_1007_fix_transfer_date_column.sql
+```
+
+Es un `UPDATE` de una sola fila sobre `condition_rule_types` (tabla técnica,
+no tocada por el admin) — cambia `target_date_column` de `created_at` a
+`at_solicitado`, que es el timestamp real de cuándo la tienda solicitó
+formalmente (queda `NULL` mientras el traspaso sigue en `BORRADOR`, así que
+se excluye automáticamente sin lógica adicional). No requiere cambios en
+`ScheduledRuleEngine.php` ni reinicio de cron.
+
+Verificación:
+```sql
+SELECT code, target_date_column FROM condition_rule_types WHERE code = 'NO_RECORD_BY_TIME';
+-- debe mostrar: at_solicitado
+```
