@@ -204,3 +204,90 @@ O, más simple y seguro, restaurar el backup de la sección 3.2:
 ```bash
 mysql -u <usuario> -p <base_de_datos> < /var/backups/omni_pre_1007_<fecha>.sql
 ```
+
+---
+
+## 6. Fase 3 — Motor de eventos (sin pasos de despliegue propios)
+
+`cron/NotificationTriggerService.php` no se despliega como script independiente
+— sus métodos estáticos se invocan desde dentro de InventoryController y del
+cron de Pareto de vencimientos ya existentes (ver `docs/INTEGRATION_FASE3.md`
+para los 2 puntos exactos de enganche). No requiere entrada en crontab.
+
+---
+
+## 7. Fase 4 — Cron de notificaciones programadas
+
+### 7.1 Variables de entorno
+
+El script `cron/cron_scheduled_notifications.php` lee la conexión a BD desde
+variables de entorno (no hardcodeadas). Configurarlas en el entorno del
+usuario que ejecuta el cron (ej. `/etc/environment` o el propio crontab):
+
+```bash
+OMNI_DB_DSN="mysql:host=127.0.0.1;dbname=<base_de_datos>;charset=utf8mb4"
+OMNI_DB_USER="omni_cron"
+OMNI_DB_PASS="<password>"
+```
+
+> Usar un usuario de MySQL dedicado (`omni_cron`) con permisos limitados a
+> `SELECT` sobre `transfers` y las tablas de catálogo, e `INSERT` sobre
+> `notifications` — no reutilizar el usuario de la aplicación web.
+
+### 7.2 Registrar el cron (cada minuto)
+
+```bash
+sudo crontab -u www-data -e
+```
+
+Agregar:
+
+```cron
+* * * * * /usr/bin/php /var/www/omni_notificaciones/cron/cron_scheduled_notifications.php >> /var/log/omni_notificaciones_cron.log 2>&1
+```
+
+### 7.3 Verificación
+
+```bash
+# Ver que el cron corrió sin errores
+tail -f /var/log/omni_notificaciones_cron.log
+
+# Confirmar que las notificaciones programadas se están generando
+mysql -u <usuario> -p <base_de_datos> -e \
+  "SELECT nt.code, COUNT(*) FROM notifications n
+   JOIN notification_types nt ON nt.id = n.notification_type_id
+   WHERE nt.trigger_mode = 'scheduled' AND n.created_at > NOW() - INTERVAL 1 DAY
+   GROUP BY nt.code;"
+```
+
+Si una regla no dispara a la hora esperada, revisar:
+1. `scheduled_notification_rules.active = 1` y `deleted_at IS NULL`
+2. `check_time` coincide exactamente con `HH:MM:00` (el motor compara al minuto)
+3. El log de errores de PHP — `ScheduledRuleEngine` registra con `error_log()`
+   cualquier `rule_type` no reconocido o tabla fuera de whitelist
+
+### 7.4 Crear la primera regla (ejemplo real, probado)
+
+```sql
+INSERT INTO scheduled_notification_rules
+  (name, notification_type_id, rule_type_id, check_time, scope, created_by)
+VALUES
+  ('Traspaso diario no registrado (todas las tiendas)',
+   (SELECT id FROM notification_types WHERE code='TRANSFER_NOT_REGISTERED'),
+   (SELECT id FROM condition_rule_types WHERE code='NO_RECORD_BY_TIME'),
+   '09:00:00', 'all_pos', <id_del_admin_que_crea_la_regla>);
+```
+
+Para un resumen consolidado a Mandos Medios en vez de una alerta por sede:
+
+```sql
+INSERT INTO scheduled_notification_rules
+  (name, notification_type_id, rule_type_id, check_time, scope, hierarchy_level_id, created_by)
+VALUES
+  ('Resumen consolidado a Mandos Medios',
+   (SELECT id FROM notification_types WHERE code='TRANSFER_NOT_REGISTERED'),
+   (SELECT id FROM condition_rule_types WHERE code='NO_RECORD_BY_TIME'),
+   '09:00:00', 'hierarchy_level',
+   (SELECT id FROM hierarchy_levels WHERE code='MANDO_MEDIO'),
+   <id_del_admin_que_crea_la_regla>);
+```
