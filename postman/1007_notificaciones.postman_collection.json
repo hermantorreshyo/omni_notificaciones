@@ -1,0 +1,1115 @@
+{
+  "info": {
+    "_postman_id": "dc17f42d-021a-4dd7-a1bf-bb6751818eb0",
+    "name": "OMNI [1007] - Notificaciones y Alertas Centralizadas",
+    "description": "Coleccion de pruebas del modulo 1007. Correr la carpeta '0. Autenticacion' primero (Login Paso 2 deja el token en la variable de entorno). Ver docs/MANUAL_PRUEBAS.md para la guia completa paso a paso.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Autenticacion",
+      "item": [
+        {
+          "name": "Login Paso 1 - obtener sedes disponibles",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"interlocutor_id\": 0\n}"
+            },
+            "description": "Paso 1 del login de dos pasos. Devuelve available_interlocutors -- las sedes a las que tiene acceso el usuario. No usa este token para nada mas."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve available_interlocutors', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.have.property('available_interlocutors');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login Paso 2 - reautenticar con sede (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"interlocutor_id\": \"{{interlocutor_id}}\"\n}"
+            },
+            "description": "Paso 2: login final con la sede elegida. El token resultante SI sirve para las siguientes peticiones. Requiere que el usuario tenga los permisos notifications.read y notifications.admin para poder correr toda la collection."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Devuelve token', () => pm.expect(json.data).to.have.property('token'));",
+                  "if (json.data && json.data.token) { pm.environment.set('token', json.data.token); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login (usuario SIN notifications.admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username_no_admin}}\",\n  \"password\": \"{{password_no_admin}}\",\n  \"interlocutor_id\": \"{{interlocutor_id}}\"\n}"
+            },
+            "description": "Usuario de prueba que SOLO tiene notifications.read (ej. Encargado de Tienda), usado en la carpeta de Casos Negativos / RBAC para confirmar que el backend bloquea correctamente los endpoints de administrador."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.token) { pm.environment.set('token_no_admin', json.data.token); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Refrescar token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Usar si el token expira a mitad de la sesión de pruebas (HTTP 401)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /auth/me - confirmar usuario autenticado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Util para confirmar que el token activo corresponde al usuario y rol esperado antes de correr el resto de la collection."
+          },
+          "response": []
+        }
+      ],
+      "description": "Ejecutar en orden antes de correr cualquier otra carpeta. Login Paso 2 deja el token guardado automaticamente en la variable de entorno {{token}}."
+    },
+    {
+      "name": "1. Notificaciones (usuario)",
+      "item": [
+        {
+          "name": "GET /notifications - Listar mis notificaciones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications?unread_only=false&limit=20&offset=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "unread_only",
+                  "value": "false"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Requiere permiso notifications.read. El resultado esta filtrado automaticamente por interlocutor/rol/nivel jerarquico del usuario autenticado -- no se puede pedir el de otra sede via parametros."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('status success', () => pm.expect(json.status).to.eql('success'));",
+                  "pm.test('trae total_unread y notifications[]', () => {",
+                  "    pm.expect(json.data).to.have.property('total_unread');",
+                  "    pm.expect(json.data.notifications).to.be.an('array');",
+                  "});",
+                  "if (json.data.notifications.length > 0) {",
+                  "    pm.environment.set('notification_id', json.data.notifications[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /notifications/{id}/read - Marcar como leida",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/{{notification_id}}/read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "{{notification_id}}",
+                "read"
+              ]
+            },
+            "description": "Requiere haber corrido antes 'Listar mis notificaciones' para que {{notification_id}} tenga un valor real. Si esta vacio, correr esa primero."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('is_read true', () => pm.expect(json.data.is_read).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /notifications/read-all - Marcar todas leidas",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/read-all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "read-all"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('trae updated (numero)', () => pm.expect(json.data).to.have.property('updated'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /notifications - Crear comunicado (BROADCAST_INFO)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications"
+              ]
+            },
+            "description": "Requiere permiso notifications.admin. Genera un BROADCAST_INFO manual -- las notificaciones de evento/programadas las crean los workers, no este endpoint.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Prueba desde Postman\",\n  \"message\": \"Este es un mensaje de prueba generado desde la collection de Postman.\",\n  \"is_global\": false,\n  \"interlocutor_id\": \"{{interlocutor_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('trae id', () => pm.expect(json.data).to.have.property('id'));",
+                  "if (json.data && json.data.id) { pm.environment.set('notification_id', json.data.id); }"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": ""
+    },
+    {
+      "name": "2. Monitoreo (admin)",
+      "item": [
+        {
+          "name": "GET /notifications/monitor - Panel de monitoreo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/monitor?severity=&date_from=&date_to=&interlocutor_id=&limit=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "monitor"
+              ],
+              "query": [
+                {
+                  "key": "severity",
+                  "value": ""
+                },
+                {
+                  "key": "date_from",
+                  "value": ""
+                },
+                {
+                  "key": "date_to",
+                  "value": ""
+                },
+                {
+                  "key": "interlocutor_id",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Requiere permiso notifications.admin. Dejar los query params vacios trae todo sin filtrar; llenarlos para probar cada filtro por separado."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('trae summary con total/critical/warning/info', () => {",
+                  "    ['total','critical','warning','info'].forEach(k => pm.expect(json.data.summary).to.have.property(k));",
+                  "});",
+                  "pm.test('trae notifications[] con recipients[]', () => {",
+                  "    pm.expect(json.data.notifications).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": ""
+    },
+    {
+      "name": "3. Reglas Programadas (admin)",
+      "item": [
+        {
+          "name": "GET /notifications/rules/form-options",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/rules/form-options",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "rules",
+                "form-options"
+              ]
+            },
+            "description": "Correr primero -- deja notification_type_id, rule_type_id y hierarchy_level_id listos para los siguientes requests. Incluye una verificacion de seguridad critica: el catalogo de rule_types nunca debe traer target_table."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "['notification_types','hierarchy_levels','rule_types'].forEach(k => {",
+                  "    pm.test('trae ' + k, () => pm.expect(json.data).to.have.property(k));",
+                  "});",
+                  "pm.test('rule_types NUNCA expone target_table', () => {",
+                  "    json.data.rule_types.forEach(rt => pm.expect(rt).to.not.have.property('target_table'));",
+                  "});",
+                  "if (json.data.notification_types.length > 0) { pm.environment.set('notification_type_id', json.data.notification_types[0].id); }",
+                  "if (json.data.rule_types.length > 0) { pm.environment.set('rule_type_id', json.data.rule_types[0].id); }",
+                  "if (json.data.hierarchy_levels.length > 0) { pm.environment.set('hierarchy_level_id', json.data.hierarchy_levels[0].id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /notifications/rules/types",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/rules/types",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "rules",
+                "types"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /notifications/rules - Listar reglas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/rules",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "rules"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('trae rules[]', () => pm.expect(json.data.rules).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /notifications/rules - Crear regla (scope=all_pos)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/rules",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "rules"
+              ]
+            },
+            "description": "Requiere haber corrido antes 'form-options' para tener notification_type_id y rule_type_id validos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Prueba Postman - Traspaso no registrado\",\n  \"notification_type_id\": \"{{notification_type_id}}\",\n  \"rule_type_id\": \"{{rule_type_id}}\",\n  \"check_time\": \"09:00:00\",\n  \"scope\": \"all_pos\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('trae id', () => pm.expect(json.data).to.have.property('id'));",
+                  "if (json.data && json.data.id) { pm.environment.set('rule_id', json.data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /notifications/rules/{id} - Actualizar regla",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/rules/{{rule_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "rules",
+                "{{rule_id}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Prueba Postman - Traspaso no registrado (editada)\",\n  \"notification_type_id\": \"{{notification_type_id}}\",\n  \"rule_type_id\": \"{{rule_type_id}}\",\n  \"check_time\": \"10:30:00\",\n  \"scope\": \"hierarchy_level\",\n  \"hierarchy_level_id\": \"{{hierarchy_level_id}}\",\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('trae id', () => pm.expect(json.data.id).to.not.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /notifications/rules/{id} - Eliminar regla (borrado logico)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/rules/{{rule_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "rules",
+                "{{rule_id}}"
+              ]
+            },
+            "description": "Borrado logico (deleted_at). Verificar en BD tras correr esto que la fila SIGUE existiendo con deleted_at con fecha, no eliminada fisicamente."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('trae id', () => pm.expect(json.data).to.have.property('id'));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": ""
+    },
+    {
+      "name": "4. Casos Negativos - RBAC y Validacion",
+      "item": [
+        {
+          "name": "GET /notifications/monitor SIN permiso admin -> 403 ERR_RBAC",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_no_admin}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/monitor",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "monitor"
+              ]
+            },
+            "description": "Usa el token del usuario SIN notifications.admin (Login (usuario SIN notifications.admin) en la carpeta 0)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('error_code ERR_RBAC', () => pm.expect(json.error_code).to.eql('ERR_RBAC'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /notifications/rules SIN permiso admin -> 403 ERR_RBAC",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_no_admin}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/rules",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "rules"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"no deberia crearse\",\n  \"notification_type_id\": 1,\n  \"rule_type_id\": 1,\n  \"check_time\": \"09:00:00\",\n  \"scope\": \"all_pos\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('error_code ERR_RBAC', () => pm.expect(json.error_code).to.eql('ERR_RBAC'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /notifications/rules scope=specific_interlocutor SIN interlocutor_id -> 400 ERR_VALIDATION",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/rules",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "rules"
+              ]
+            },
+            "description": "Usa el token admin ({{token}}) -- el fallo esperado es de VALIDACION, no de permisos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"prueba validacion\",\n  \"notification_type_id\": \"{{notification_type_id}}\",\n  \"rule_type_id\": \"{{rule_type_id}}\",\n  \"check_time\": \"09:00:00\",\n  \"scope\": \"specific_interlocutor\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test('error_code ERR_VALIDATION', () => pm.expect(json.error_code).to.eql('ERR_VALIDATION'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /notifications/999999999/read -> 404 ERR_NOT_FOUND",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Interlocutor-Id",
+                "value": "{{interlocutor_id}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Subsystem-Id",
+                "value": "{{subsystem_id}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/999999999/read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "999999999",
+                "read"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('error_code ERR_NOT_FOUND', () => pm.expect(json.error_code).to.eql('ERR_NOT_FOUND'));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Estos requests DEBEN fallar -- si alguno responde 200/success, es un regresion de seguridad o de validacion."
+    }
+  ],
+  "variable": []
+}

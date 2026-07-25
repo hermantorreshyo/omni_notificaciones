@@ -1,8 +1,10 @@
-# Manual de Despliegue — `omni_notificaciones` (Módulo [1007])
+# Manual de Despliegue e Implantación — `omni_notificaciones` (Módulo [1007])
 
 > **Servidor destino:** Debian 13 (Trixie) · **Stack:** LAMP nativo (Apache2 + PHP 8.x + MySQL 8.x), sin frameworks ni Composer
 > **Repositorio:** `omni_notificaciones`
 > **Este documento se actualiza en cada fase** — es un manual vivo, no un entregable único. Cada sección nueva se agrega en el commit de la fase que la introduce.
+
+> **Documentación relacionada:** `MANUAL_USUARIO.md` (uso diario), `MANUAL_DESARROLLADOR.md` (arquitectura y extensión), `API_REFERENCE.md` (endpoints).
 
 ---
 
@@ -13,9 +15,13 @@
 3. Fase 1 — Base de datos (migración)
 4. Verificación post-despliegue de Fase 1
 5. Rollback
-6. (Se agrega en Fase 2) Configuración del vhost Apache y endpoints
-7. (Se agrega en Fase 4) Cron de notificaciones programadas
-8. (Se agrega en Fase 6) Panel de administración
+6. Fase 2 — Endpoints API CORE
+7. Fase 3 — Motor de eventos (sin pasos de despliegue propios)
+8. Fase 4 — Cron de notificaciones programadas
+9. Fase 5 — Widget de campana (frontend)
+10. Fase 6 — Panel de administración (monitoreo + reglas)
+11. Fix — BORRADOR en transfers (aplicar tras Fase 4)
+12. Plan de Implantación Gradual
 
 ---
 
@@ -207,7 +213,45 @@ mysql -u <usuario> -p <base_de_datos> < /var/backups/omni_pre_1007_<fecha>.sql
 
 ---
 
-## 6. Fase 3 — Motor de eventos (sin pasos de despliegue propios)
+## 6. Fase 2 — Endpoints API CORE
+
+### 6.1 Copiar los controllers
+
+```bash
+scp -r api/NotificationController.php api/NotificationRulesController.php \
+    usuario@servidor:/var/www/omni_notificaciones/api/
+chown www-data:www-data /var/www/omni_notificaciones/api/*.php
+chmod 644 /var/www/omni_notificaciones/api/*.php
+```
+
+### 6.2 Registrar las rutas
+
+Ver la tabla completa de rutas, métodos, permisos y contratos de request/
+response en `docs/API_REFERENCE.md`. Quien mantiene el router central de
+OMNI API CORE debe:
+
+1. Registrar las 11 rutas de la tabla resumen de `API_REFERENCE.md`.
+2. Armar el array `$authContext` (ver contrato en la cabecera de
+   `NotificationController.php`) a partir de lo que el proxy ya inyecta
+   (JWT decodificado, `X-Interlocutor-Id`).
+3. Confirmar el nombre real de la clase/método de conexión a BD.
+
+Ninguno de estos 3 puntos requiere cambios en la lógica de negocio de los
+controllers — son cableado (wiring), no diseño. Ver
+`docs/MANUAL_DESARROLLADOR.md` sección 6 para más detalle.
+
+### 6.3 Verificación
+
+```bash
+curl -X GET "https://tu-dominio/api/omni.php?action=notifications" \
+  -H "Authorization: Bearer <token>" -H "X-Interlocutor-Id: <id>"
+```
+Debe responder `{"status":"success","data":{"total_unread":0,"notifications":[]}}`
+en una instalación recién migrada (sin notificaciones aún).
+
+---
+
+## 7. Fase 3 — Motor de eventos (sin pasos de despliegue propios)
 
 `cron/NotificationTriggerService.php` no se despliega como script independiente
 — sus métodos estáticos se invocan desde dentro de InventoryController y del
@@ -216,7 +260,7 @@ para los 2 puntos exactos de enganche). No requiere entrada en crontab.
 
 ---
 
-## 7. Fase 4 — Cron de notificaciones programadas
+## 8. Fase 4 — Cron de notificaciones programadas
 
 ### 7.1 Variables de entorno
 
@@ -294,7 +338,7 @@ VALUES
 
 ---
 
-## 8. Fase 5 — Widget de campana (frontend)
+## 9. Fase 5 — Widget de campana (frontend)
 
 ### 8.1 Sin build step
 
@@ -338,7 +382,7 @@ de 46px. Ver el commit de esta fase para el script de prueba.
 
 ---
 
-## 9. Fase 6 — Panel de administración (monitoreo + reglas)
+## 10. Fase 6 — Panel de administración (monitoreo + reglas)
 
 ### 9.1 Rutas nuevas a registrar
 
@@ -391,7 +435,7 @@ formulario nunca envía identificadores de tabla/columna al backend.
 
 ---
 
-## 10. Fix — BORRADOR en transfers (aplicar tras Fase 4)
+## 11. Fix — BORRADOR en transfers (aplicar tras Fase 4)
 
 El core agregó el estado `BORRADOR` a `transfers` (workflow BORRADOR →
 SOLICITADO). Esto afecta el patrón `NO_RECORD_BY_TIME` de la Fase 4: si
@@ -414,3 +458,49 @@ Verificación:
 SELECT code, target_date_column FROM condition_rule_types WHERE code = 'NO_RECORD_BY_TIME';
 -- debe mostrar: at_solicitado
 ```
+
+---
+
+## 12. Plan de Implantación Gradual
+
+No se recomienda activar `scope=all_pos` para las 14+ sedes desde el primer
+día. Plan sugerido, consistente con el enfoque de implantación por fases ya
+usado en otros subsistemas de OMNI:
+
+### Fase A — Piloto (1-2 sedes, 1 semana)
+1. Aplicar las migraciones (sección 3) y desplegar el widget solo en el
+   layout de 1-2 sedes piloto (o dejarlo activo para todas pero crear la
+   regla programada con `scope=specific_interlocutor` apuntando solo a
+   esas sedes).
+2. Confirmar que el equipo de esas sedes entiende la campana y sabe marcar
+   notificaciones como leídas (usar `docs/MANUAL_USUARIO.md`).
+3. Revisar a diario el Panel de Monitoreo — confirmar que no hay ruido
+   excesivo (ej. una regla mal configurada disparando todos los días).
+
+### Fase B — Motor de eventos (todas las sedes, stock)
+1. Enganchar `NotificationTriggerService` en producción (ver
+   `MANUAL_DESARROLLADOR.md` sección 6, punto 3).
+2. Este motor es transparente para el usuario (no requiere que cree nada) —
+   se puede activar para todas las sedes desde el inicio, ya que solo
+   refleja umbrales de stock que ya existen.
+
+### Fase C — Motor programado (rollout progresivo por sede)
+1. Cambiar la regla piloto de `specific_interlocutor` a `all_pos` cuando
+   se tenga confianza en el patrón.
+2. Considerar empezar con `scope=hierarchy_level` (resumen consolidado a
+   Mandos Medios) antes que notificar a cada sede individualmente — genera
+   menos ruido mientras el equipo se acostumbra.
+
+### Fase D — Panel Admin abierto a más roles
+1. Asignar `notifications.admin` solo a 1-2 personas al inicio (ej.
+   Dirección de Tecnología).
+2. Una vez validado el patrón de reglas, extender el permiso a Mandos
+   Medios que necesiten crear sus propias reglas de seguimiento.
+
+### Rollback en cualquier fase
+
+Si una fase genera problemas, desactivar es no-destructivo:
+- Reglas programadas: `UPDATE scheduled_notification_rules SET active = 0 WHERE id = ...`
+- Motor de eventos: comentar la línea de invocación en `InventoryController`
+  (no requiere revertir la migración).
+- Rollback completo de esquema: ver sección 5.
