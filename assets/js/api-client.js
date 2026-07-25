@@ -49,7 +49,46 @@
         },
     };
 
+    /**
+     * Cliente del panel de monitoreo (Fase 6) — requiere notifications.admin
+     */
+    const MonitorAPI = {
+        get(filters = {}) {
+            const params = new URLSearchParams(filters);
+            const qs = params.toString();
+            return apiCall(`notifications/monitor${qs ? '?' + qs : ''}`, 'GET');
+        },
+    };
+
+    /**
+     * Cliente CRUD de reglas programadas (Fase 6) — requiere notifications.admin.
+     * Nunca envía ni recibe identificadores de tabla/columna — solo IDs de
+     * catálogo y valores (hora, alcance, umbral).
+     */
+    const RulesAPI = {
+        ruleTypes() {
+            return apiCall('notifications/rules/types', 'GET');
+        },
+        formOptions() {
+            return apiCall('notifications/rules/form-options', 'GET');
+        },
+        list() {
+            return apiCall('notifications/rules', 'GET');
+        },
+        create(rule) {
+            return apiCall('notifications/rules', 'POST', rule);
+        },
+        update(id, rule) {
+            return apiCall(`notifications/rules/${id}`, 'PUT', rule);
+        },
+        remove(id) {
+            return apiCall(`notifications/rules/${id}`, 'DELETE');
+        },
+    };
+
     global.OmniApiClient = global.OmniApiClient || {};
     global.OmniApiClient.apiCall = apiCall;
     global.OmniApiClient.Notifications = NotificationsAPI;
+    global.OmniApiClient.Monitor = MonitorAPI;
+    global.OmniApiClient.Rules = RulesAPI;
 })(typeof window !== 'undefined' ? window : globalThis);
