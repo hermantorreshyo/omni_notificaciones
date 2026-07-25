@@ -12,14 +12,22 @@
 
 ## 1. Qué necesita tu subsistema antes de integrar
 
-1. **Los archivos JS ya publicados** como estáticos accesibles vía HTTP:
-   - `/assets/js/api-client.js`
-   - `/assets/js/notifications-widget.js`
+1. **Los archivos JS ya publicados**, servidos desde el subdominio dedicado
+   `notificaciones.josepan.app` (no necesitas copiarlos a tu propio proyecto):
+   - `https://notificaciones.josepan.app/assets/js/api-client.js`
+   - `https://notificaciones.josepan.app/assets/js/notifications-widget.js`
 
-   Si tu subsistema vive en un dominio distinto al de OMNI API CORE (ej.
-   `compras.josepan.app` vs `api.omni.josepan.app`), estos archivos deben
-   servirse **desde el propio dominio del subsistema** — cópialos a tu
-   `assets/js/`, no los referencies cross-origin.
+   Cargar un `<script src>` cross-origin es seguro y no requiere CORS — el
+   código se ejecuta en el contexto de tu página, así que las llamadas
+   `fetch()` relativas dentro de `api-client.js` siguen resolviendo contra
+   **tu propio dominio** (ej. `compras.josepan.app`), no contra
+   `notificaciones.josepan.app`. Ver `docs/DEPLOYMENT.md` sección 2 para
+   cómo se configuró ese subdominio.
+
+   > Si por alguna razón tu subsistema no puede cargar recursos externos
+   > (política de seguridad interna, CSP estricta), copia los 2 archivos a
+   > tu propio `assets/js/` — el código es idéntico, solo cambia de dónde
+   > se sirve.
 
 2. **El proxy PHP ya funcionando** en tu subsistema — el widget llama a
    `/api/omni.php?action=notifications...`, el mismo proxy que ya usas para
@@ -43,9 +51,12 @@ usualmente un `header.php`/`layout.php` compartido):
 <!-- Contenedor del widget: colócalo en el header, junto a los demás íconos de navegación -->
 <div id="omni-notif-widget"></div>
 
-<!-- Cargar DESPUÉS de que el usuario ya está autenticado en la página -->
-<script src="/assets/js/api-client.js"></script>
-<script src="/assets/js/notifications-widget.js"></script>
+<!-- Cargar DESPUÉS de que el usuario ya está autenticado en la página.
+     Las librerías se sirven desde el subdominio centralizado -- así,
+     cualquier actualización del widget se refleja en todos los
+     subsistemas sin que cada uno tenga que redesplegar sus propios JS. -->
+<script src="https://notificaciones.josepan.app/assets/js/api-client.js"></script>
+<script src="https://notificaciones.josepan.app/assets/js/notifications-widget.js"></script>
 <script>
   OmniNotificationsWidget.mount('omni-notif-widget');
 </script>
@@ -83,9 +94,10 @@ mismo lugar donde ya viven otros íconos globales (ej. el selector de sede).
   <!-- Scripts de tu subsistema -->
   <script src="/assets/js/mi-subsistema.js"></script>
 
-  <!-- Widget de notificaciones (orden: api-client antes que el widget) -->
-  <script src="/assets/js/api-client.js"></script>
-  <script src="/assets/js/notifications-widget.js"></script>
+  <!-- Widget de notificaciones, servido desde notificaciones.josepan.app
+       (orden: api-client antes que el widget) -->
+  <script src="https://notificaciones.josepan.app/assets/js/api-client.js"></script>
+  <script src="https://notificaciones.josepan.app/assets/js/notifications-widget.js"></script>
   <script>
     OmniNotificationsWidget.mount('omni-notif-widget');
   </script>
@@ -126,9 +138,9 @@ este paso.
 
 ## 4. Checklist de integración
 
-- [ ] `api-client.js` y `notifications-widget.js` copiados a tu `assets/js/`
+- [ ] `https://notificaciones.josepan.app/assets/js/api-client.js` responde 200 (confirmar antes de integrar — ver `docs/DEPLOYMENT.md` sección 2.5)
 - [ ] `<div id="omni-notif-widget">` agregado al layout, en el header
-- [ ] Las 2 líneas `<script src>` + el `mount()` agregadas, en ese orden
+- [ ] Las 2 líneas `<script src>` (apuntando al subdominio) + el `mount()` agregadas, en ese orden
 - [ ] Confirmado que tu proxy responde a `action=notifications` (probar con
       la collection de Postman apuntando a tu dominio, o con `curl` directo)
 - [ ] Al menos un rol de tu subsistema tiene `notifications.read` asignado

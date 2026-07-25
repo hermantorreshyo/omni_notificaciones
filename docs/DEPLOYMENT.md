@@ -11,17 +11,18 @@
 ## Índice
 
 1. Prerrequisitos del servidor
-2. Clonado y estructura del repositorio
-3. Fase 1 — Base de datos (migración)
-4. Verificación post-despliegue de Fase 1
-5. Rollback
-6. Fase 2 — Endpoints API CORE
-7. Fase 3 — Motor de eventos (sin pasos de despliegue propios)
-8. Fase 4 — Cron de notificaciones programadas
-9. Fase 5 — Widget de campana (frontend)
-10. Fase 6 — Panel de administración (monitoreo + reglas)
-11. Fix — BORRADOR en transfers (aplicar tras Fase 4)
-12. Plan de Implantación Gradual
+2. Configuración del subdominio notificaciones.josepan.app
+3. Clonado y estructura del repositorio
+4. Fase 1 — Base de datos (migración)
+5. Verificación post-despliegue de Fase 1
+6. Rollback
+7. Fase 2 — Endpoints API CORE
+8. Fase 3 — Motor de eventos (sin pasos de despliegue propios)
+9. Fase 4 — Cron de notificaciones programadas
+10. Fase 5 — Widget de campana (frontend)
+11. Fase 6 — Panel de administración (monitoreo + reglas)
+12. Fix — BORRADOR en transfers (aplicar tras Fase 4)
+13. Plan de Implantación Gradual
 
 ---
 
@@ -69,7 +70,84 @@ sudo systemctl restart apache2
 
 ---
 
-## 2. Clonado y estructura del repositorio
+## 2. Configuración del subdominio `notificaciones.josepan.app`
+
+El subdominio ya apunta (DNS + hosting) a `/var/www/omni/omni_notificaciones`.
+Esta sección deja Apache sirviendo esa carpeta correctamente.
+
+### 2.1 Habilitar módulos necesarios
+
+```bash
+sudo a2enmod rewrite headers ssl
+```
+
+### 2.2 Copiar el VirtualHost
+
+El archivo `deploy/notificaciones.josepan.app.conf` (incluido en este repo)
+ya trae la configuración completa: HTTPS forzado, y bloqueo de las carpetas
+que nunca deben ser accesibles vía HTTP (`database/`, `cron/`, `docs/`,
+`tests/`, `postman/`, y **`api/`** — ver nota importante más abajo).
+
+```bash
+sudo cp /var/www/omni/omni_notificaciones/deploy/notificaciones.josepan.app.conf \
+    /etc/apache2/sites-available/notificaciones.josepan.app.conf
+sudo a2ensite notificaciones.josepan.app.conf
+```
+
+### 2.3 Certificado SSL (Let's Encrypt)
+
+```bash
+sudo apt install -y certbot python3-certbot-apache
+sudo certbot --apache -d notificaciones.josepan.app
+```
+
+Certbot detecta el VirtualHost recién habilitado y completa las rutas de
+`SSLCertificateFile`/`SSLCertificateKeyFile` automáticamente.
+
+### 2.4 Recargar Apache
+
+```bash
+sudo apache2ctl configtest   # debe responder "Syntax OK"
+sudo systemctl reload apache2
+```
+
+### 2.5 Verificación
+
+```bash
+curl -I https://notificaciones.josepan.app/assets/js/api-client.js
+# Debe responder 200 OK, Content-Type: application/javascript (o text/plain)
+
+curl -I https://notificaciones.josepan.app/database/migration_1007_notificaciones.sql
+# Debe responder 403 Forbidden -- si responde 200, el bloqueo no quedó aplicado
+
+curl -I https://notificaciones.josepan.app/api/NotificationController.php
+# Debe responder 403 Forbidden -- ver nota importante abajo sobre por qué
+```
+
+### ⚠️ Nota importante — el proxy `/api/omni.php` no está incluido en este repo
+
+Las páginas `admin/notifications-monitor.html` y `admin/notification-rules.html`
+llaman a `fetch('/api/omni.php?action=...')` **relativo a su propio origen**
+— es decir, cuando se abren desde `notificaciones.josepan.app`, esa llamada
+va a `notificaciones.josepan.app/api/omni.php`, no directamente al API CORE.
+
+Este repo **nunca incluyó ese archivo proxy** — construí los *controllers de
+negocio* (`api/NotificationController.php`, `api/NotificationRulesController.php`)
+que van del otro lado del proxy, integrados al router de OMNI API CORE (por
+eso están bloqueados del acceso web directo arriba, en la sección 2.2).
+
+**Para que las 2 páginas de administración funcionen en este subdominio,
+falta copiar el mismo `api/omni.php`** que ya usan los demás subsistemas
+(1002-1004) a la raíz pública de este proyecto (ej.
+`/var/www/omni/omni_notificaciones/api-proxy/omni.php`, fuera del `api/`
+bloqueado, o renombrando la carpeta bloqueada a `api-core/` y dejando
+`api/omni.php` como el proxy público). Como no tengo ese archivo en este
+repo, no puedo generarlo sin arriesgarme a inventar su contenido — cópialo
+tal cual desde uno de los subsistemas existentes.
+
+---
+
+## 3. Clonado y estructura del repositorio
 
 ```bash
 cd /var/www
@@ -109,9 +187,9 @@ Solo `api/`, `admin/` y `assets/` deben quedar accesibles vía HTTP.
 
 ---
 
-## 3. Fase 1 — Base de datos (migración)
+## 4. Fase 1 — Base de datos (migración)
 
-### 3.1 Verificar el supuesto de negocio pendiente
+### 4.1 Verificar el supuesto de negocio pendiente
 
 Antes de aplicar, confirma que la instalación real de OMNI ya tiene:
 
@@ -125,14 +203,14 @@ SHOW TABLES LIKE 'subsystem_screens';
 
 Las cinco deben existir — la migración de [1007] no las crea, solo las referencia.
 
-### 3.2 Backup previo (obligatorio en producción)
+### 4.2 Backup previo (obligatorio en producción)
 
 ```bash
 mysqldump -u <usuario> -p --single-transaction --routines --triggers \
   <base_de_datos> > /var/backups/omni_pre_1007_$(date +%Y%m%d_%H%M%S).sql
 ```
 
-### 3.3 Aplicar la migración
+### 4.3 Aplicar la migración
 
 ```bash
 cd /var/www/omni_notificaciones
@@ -146,7 +224,7 @@ roles` envuelto en SQL dinámico condicional).
 
 ---
 
-## 4. Verificación post-despliegue de Fase 1
+## 5. Verificación post-despliegue de Fase 1
 
 ```sql
 -- Deben existir las 8 tablas nuevas
@@ -184,7 +262,7 @@ revisar el log de errores de `mysql` antes de continuar a Fase 2.
 
 ---
 
-## 5. Rollback
+## 6. Rollback
 
 Si algo sale mal y hay que revertir Fase 1:
 
@@ -205,7 +283,7 @@ DELETE FROM permissions WHERE resource = 'notifications';
 SET foreign_key_checks = 1;
 ```
 
-O, más simple y seguro, restaurar el backup de la sección 3.2:
+O, más simple y seguro, restaurar el backup de la sección 4.2:
 
 ```bash
 mysql -u <usuario> -p <base_de_datos> < /var/backups/omni_pre_1007_<fecha>.sql
@@ -213,9 +291,9 @@ mysql -u <usuario> -p <base_de_datos> < /var/backups/omni_pre_1007_<fecha>.sql
 
 ---
 
-## 6. Fase 2 — Endpoints API CORE
+## 7. Fase 2 — Endpoints API CORE
 
-### 6.1 Copiar los controllers
+### 7.1 Copiar los controllers
 
 ```bash
 scp -r api/NotificationController.php api/NotificationRulesController.php \
@@ -224,7 +302,7 @@ chown www-data:www-data /var/www/omni_notificaciones/api/*.php
 chmod 644 /var/www/omni_notificaciones/api/*.php
 ```
 
-### 6.2 Registrar las rutas
+### 7.2 Registrar las rutas
 
 Ver la tabla completa de rutas, métodos, permisos y contratos de request/
 response en `docs/API_REFERENCE.md`. Quien mantiene el router central de
@@ -240,7 +318,7 @@ Ninguno de estos 3 puntos requiere cambios en la lógica de negocio de los
 controllers — son cableado (wiring), no diseño. Ver
 `docs/MANUAL_DESARROLLADOR.md` sección 6 para más detalle.
 
-### 6.3 Verificación
+### 7.3 Verificación
 
 ```bash
 curl -X GET "https://tu-dominio/api/omni.php?action=notifications" \
@@ -251,7 +329,7 @@ en una instalación recién migrada (sin notificaciones aún).
 
 ---
 
-## 7. Fase 3 — Motor de eventos (sin pasos de despliegue propios)
+## 8. Fase 3 — Motor de eventos (sin pasos de despliegue propios)
 
 `cron/NotificationTriggerService.php` no se despliega como script independiente
 — sus métodos estáticos se invocan desde dentro de InventoryController y del
@@ -260,9 +338,9 @@ para los 2 puntos exactos de enganche). No requiere entrada en crontab.
 
 ---
 
-## 8. Fase 4 — Cron de notificaciones programadas
+## 9. Fase 4 — Cron de notificaciones programadas
 
-### 7.1 Variables de entorno
+### 9.1 Variables de entorno
 
 El script `cron/cron_scheduled_notifications.php` lee la conexión a BD desde
 variables de entorno (no hardcodeadas). Configurarlas en el entorno del
@@ -278,7 +356,7 @@ OMNI_DB_PASS="<password>"
 > `SELECT` sobre `transfers` y las tablas de catálogo, e `INSERT` sobre
 > `notifications` — no reutilizar el usuario de la aplicación web.
 
-### 7.2 Registrar el cron (cada minuto)
+### 9.2 Registrar el cron (cada minuto)
 
 ```bash
 sudo crontab -u www-data -e
@@ -290,7 +368,7 @@ Agregar:
 * * * * * /usr/bin/php /var/www/omni_notificaciones/cron/cron_scheduled_notifications.php >> /var/log/omni_notificaciones_cron.log 2>&1
 ```
 
-### 7.3 Verificación
+### 9.3 Verificación
 
 ```bash
 # Ver que el cron corrió sin errores
@@ -310,7 +388,7 @@ Si una regla no dispara a la hora esperada, revisar:
 3. El log de errores de PHP — `ScheduledRuleEngine` registra con `error_log()`
    cualquier `rule_type` no reconocido o tabla fuera de whitelist
 
-### 7.4 Crear la primera regla (ejemplo real, probado)
+### 9.4 Crear la primera regla (ejemplo real, probado)
 
 ```sql
 INSERT INTO scheduled_notification_rules
@@ -338,15 +416,15 @@ VALUES
 
 ---
 
-## 9. Fase 5 — Widget de campana (frontend)
+## 10. Fase 5 — Widget de campana (frontend)
 
-### 8.1 Sin build step
+### 10.1 Sin build step
 
 Los archivos `assets/js/api-client.js` y `assets/js/notifications-widget.js`
 son JS vanilla sin dependencias — no requieren npm, webpack, ni build. Se
 sirven directamente como estáticos vía Apache.
 
-### 8.2 Integración en cada subsistema ([1002]-[1005])
+### 10.2 Integración en cada subsistema ([1002]-[1005])
 
 Agregar en el layout HTML de cada subsistema, antes del cierre de `</body>`:
 
@@ -362,7 +440,7 @@ Agregar en el layout HTML de cada subsistema, antes del cierre de `</body>`:
 Colocar el `<div id="omni-notif-widget">` en el header de cada subsistema,
 junto al resto de iconos de navegación.
 
-### 8.3 Verificación visual rápida
+### 10.3 Verificación visual rápida
 
 1. Abrir cualquier subsistema logueado — debe verse el ícono de campana.
 2. Si hay notificaciones no leídas, debe verse el badge numérico rojo.
@@ -372,7 +450,7 @@ junto al resto de iconos de navegación.
 4. Tocar el check de una notificación la marca como leída y el badge baja.
 5. "Marcar todas leídas" vacía el badge.
 
-### 8.4 Pruebas automatizadas
+### 10.4 Pruebas automatizadas
 
 Los 2 archivos se validaron con `node --check` (sintaxis) y con una
 suite funcional usando `jsdom` que simula el proxy `/api/omni.php` y
@@ -382,9 +460,9 @@ de 46px. Ver el commit de esta fase para el script de prueba.
 
 ---
 
-## 10. Fase 6 — Panel de administración (monitoreo + reglas)
+## 11. Fase 6 — Panel de administración (monitoreo + reglas)
 
-### 9.1 Rutas nuevas a registrar
+### 11.1 Rutas nuevas a registrar
 
 ```
 GET    /api/v1/notifications/monitor              → NotificationController::monitor()
@@ -400,7 +478,7 @@ Las 6 requieren el permiso `notifications.admin` (ya insertado en Fase 1).
 Asignar ese permiso a los roles correspondientes en `role_permissions` es
 una decisión de negocio pendiente (ver `CHECKLIST_FASE1.md`).
 
-### 9.2 Páginas a publicar
+### 11.2 Páginas a publicar
 
 ```
 admin/notifications-monitor.html   → Panel de monitoreo (KPIs + tabla filtrable)
@@ -411,7 +489,7 @@ Enlazar ambas desde el menú del Panel Admin de OMNI, en las pantallas
 `notifications_monitor` y `notification_rules` ya registradas en
 `subsystem_screens` (subsystem `1007`).
 
-### 9.3 Verificación
+### 11.3 Verificación
 
 1. Con un usuario que tenga `notifications.admin`: abrir
    `admin/notification-rules.html` — deben cargar los 3 dropdowns
@@ -424,7 +502,7 @@ Enlazar ambas desde el menú del Panel Admin de OMNI, en las pantallas
 5. Con un usuario SIN `notifications.admin`: ambas páginas deben mostrar
    el mensaje de error RBAC en vez de datos.
 
-### 9.4 Pruebas automatizadas
+### 11.4 Pruebas automatizadas
 
 `NotificationRulesController.php` y `NotificationController::monitor()` se
 probaron funcionalmente contra datos reales (PHP 8.3 + PDO): catálogo de
@@ -435,7 +513,7 @@ formulario nunca envía identificadores de tabla/columna al backend.
 
 ---
 
-## 11. Fix — BORRADOR en transfers (aplicar tras Fase 4)
+## 12. Fix — BORRADOR en transfers (aplicar tras Fase 4)
 
 El core agregó el estado `BORRADOR` a `transfers` (workflow BORRADOR →
 SOLICITADO). Esto afecta el patrón `NO_RECORD_BY_TIME` de la Fase 4: si
@@ -461,14 +539,14 @@ SELECT code, target_date_column FROM condition_rule_types WHERE code = 'NO_RECOR
 
 ---
 
-## 12. Plan de Implantación Gradual
+## 13. Plan de Implantación Gradual
 
 No se recomienda activar `scope=all_pos` para las 14+ sedes desde el primer
 día. Plan sugerido, consistente con el enfoque de implantación por fases ya
 usado en otros subsistemas de OMNI:
 
 ### Fase A — Piloto (1-2 sedes, 1 semana)
-1. Aplicar las migraciones (sección 3) y desplegar el widget solo en el
+1. Aplicar las migraciones (sección 4) y desplegar el widget solo en el
    layout de 1-2 sedes piloto (o dejarlo activo para todas pero crear la
    regla programada con `scope=specific_interlocutor` apuntando solo a
    esas sedes).
@@ -503,4 +581,4 @@ Si una fase genera problemas, desactivar es no-destructivo:
 - Reglas programadas: `UPDATE scheduled_notification_rules SET active = 0 WHERE id = ...`
 - Motor de eventos: comentar la línea de invocación en `InventoryController`
   (no requiere revertir la migración).
-- Rollback completo de esquema: ver sección 5.
+- Rollback completo de esquema: ver sección 6.
