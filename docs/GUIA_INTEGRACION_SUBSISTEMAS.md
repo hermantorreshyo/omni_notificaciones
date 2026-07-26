@@ -138,7 +138,7 @@ este paso.
 
 ## 4. Checklist de integración
 
-- [ ] `https://notificaciones.josepan.app/assets/js/api-client.js` responde 200 (confirmar antes de integrar — ver `docs/DEPLOYMENT.md` sección 2.5)
+- [ ] `https://notificaciones.josepan.app/assets/js/api-client.js` responde 200 (confirmar antes de integrar — ver `docs/DEPLOYMENT.md` sección 2.6)
 - [ ] `<div id="omni-notif-widget">` agregado al layout, en el header
 - [ ] Las 2 líneas `<script src>` (apuntando al subdominio) + el `mount()` agregadas, en ese orden
 - [ ] Confirmado que tu proxy responde a `action=notifications` (probar con

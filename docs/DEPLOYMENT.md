@@ -94,24 +94,61 @@ sudo cp /var/www/omni/omni_notificaciones/deploy/notificaciones.josepan.app.conf
 sudo a2ensite notificaciones.josepan.app.conf
 ```
 
-### 2.3 Certificado SSL (Let's Encrypt)
+### 2.3 Verificar que el DNS público ya resuelve (antes de pedir el certificado)
+
+**"El subdominio apunta a la carpeta del proyecto" significa que el vhost
+de Apache ya sabe qué servir — NO significa que el DNS público de
+`josepan.app` ya tenga el registro que le dice a Internet a qué IP ir.**
+Son dos pasos distintos, en dos lugares distintos (Apache vs. el proveedor
+de DNS del dominio). Confirma el segundo antes de correr certbot:
+
+```bash
+# IP pública real de este servidor
+curl -4 ifconfig.me
+
+# ¿El subdominio ya resuelve?
+dig +short A notificaciones.josepan.app
+```
+
+Si `dig` no devuelve nada (o Let's Encrypt reporta `NXDOMAIN`), falta
+agregar el registro DNS en el proveedor donde se gestiona `josepan.app`:
+
+```
+Tipo: A · Nombre: notificaciones · Valor: <IP pública de arriba>
+```
+
+Espera a la propagación (minutos a horas) y repite `dig` hasta que
+devuelva la IP correcta — **recién ahí** continuar con 2.4.
+
+### 2.4 Certificado SSL (Let's Encrypt)
 
 ```bash
 sudo apt install -y certbot python3-certbot-apache
 sudo certbot --apache -d notificaciones.josepan.app
 ```
 
-Certbot detecta el VirtualHost recién habilitado y completa las rutas de
-`SSLCertificateFile`/`SSLCertificateKeyFile` automáticamente.
+Certbot detecta el `VirtualHost` recién habilitado y completa las 3 líneas
+`SSLEngine on` / `SSLCertificateFile` / `SSLCertificateKeyFile` él mismo —
+por eso el `.conf` del repo las trae **comentadas** de fábrica. Si las
+descomentas a mano antes de correr certbot, `apache2ctl configtest` falla
+con `SSLCertificateFile: file ... does not exist or is empty` y certbot no
+puede ni arrancar (el certificado que buscan esas líneas todavía no existe).
 
-### 2.4 Recargar Apache
+**Si ya te pasó esto** (el error de arriba): edita
+`/etc/apache2/sites-enabled/notificaciones.josepan.app.conf`, vuelve a
+comentar esas 3 líneas, corre `sudo systemctl reload apache2`, y vuelve a
+correr `certbot --apache` — esta vez sí encontrará el bloque `:443` ya
+existente y le insertará las líneas correctas sin tocar el resto de la
+configuración (el bloqueo de `database/`, `cron/`, `api/`, etc. se conserva).
+
+### 2.5 Recargar Apache
 
 ```bash
 sudo apache2ctl configtest   # debe responder "Syntax OK"
 sudo systemctl reload apache2
 ```
 
-### 2.5 Verificación
+### 2.6 Verificación
 
 ```bash
 curl -I https://notificaciones.josepan.app/assets/js/api-client.js
